@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CALENDÁRIO DE ANIVERSÁRIOS</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+<style>
+  body { font-family: Arial; margin:0; padding:10px; background:#121212; color:#eee; }
+  h1 { text-align:center; color:#0abde3; margin:20px 0; }
+  form, .filtro { background:#222; padding:15px; border-radius:12px; margin:15px auto; max-width:450px; }
+  label { display:block; margin-top:10px; font-weight:bold; }
+  input, textarea, select { width:100%; padding:10px; border-radius:8px; border:none; margin-top:5px; background:#333; color:#eee; font-size:14px; }
+  button { margin-top:15px; padding:12px 20px; border:none; border-radius:8px; background:#0abde3; color:#111; cursor:pointer; width:100%; font-weight:bold; }
+  .cards-container { display:flex; flex-wrap:wrap; gap:15px; justify-content:center; }
+  .card {
+    width: 250px; height: 280px;
+    background-color: #0abde3;
+    border-radius:16px; color:#111; text-align:center;
+    padding:10px; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    box-shadow: 0 8px 15px rgba(0,0,0,0.3);
+  }
+  .card img { width:100px; height:100px; object-fit:cover; margin-bottom:10px; border-radius:50%; border:2px solid #fff; }
+  .card h3 { margin:5px 0; font-size:18px; font-weight:bold; color:#fff; }
+  .card p { margin:5px 0; font-size:14px; color:#fff; }
+  .card .actions { margin-top:8px; display:flex; gap:5px; justify-content:center; }
+  .edit-btn { background:#ffa502; color:#111; border-radius:6px; padding:5px 10px; cursor:pointer; }
+  .delete-btn { background:#ff3f34; color:#fff; border-radius:6px; padding:5px 10px; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<h1><i class="fa-solid fa-bolt"></i> CALENDÁRIO DE ANIVERSÁRIOS <i class="fa-solid fa-bolt"></i></h1>
+
+<form id="cadastroForm">
+  <input type="hidden" id="editId">
+  <label>Nome</label>
+  <input type="text" id="nome" required>
+  <label>Número WhatsApp</label>
+  <input type="tel" id="numero" required>
+  <label>Mensagem</label>
+  <textarea id="mensagem" rows="3" required></textarea>
+  <label>Data de aniversário</label>
+  <input type="date" id="data" required>
+  <label>Foto</label>
+  <input type="file" id="foto" accept="image/*">
+  <button type="submit"><i class="fa-solid fa-plus"></i> Salvar Cadastro</button>
+</form>
+
+<div class="filtro">
+  <label>Filtrar por mês</label>
+  <select id="filtroMes">
+    <option value="">Todos os meses</option>
+    <option value="01">Janeiro</option>
+    <option value="02">Fevereiro</option>
+    <option value="03">Março</option>
+    <option value="04">Abril</option>
+    <option value="05">Maio</option>
+    <option value="06">Junho</option>
+    <option value="07">Julho</option>
+    <option value="08">Agosto</option>
+    <option value="09">Setembro</option>
+    <option value="10">Outubro</option>
+    <option value="11">Novembro</option>
+    <option value="12">Dezembro</option>
+  </select>
+</div>
+
+<div class="cards-container" id="cardsContainer"></div>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+  import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+  import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js";
+
+  // 🔹 Substitua com suas credenciais Firebase
+  const firebaseConfig = {
+    apiKey: "SUA_API_KEY",
+    authDomain: "SEU_PROJETO.firebaseapp.com",
+    projectId: "SEU_PROJETO",
+    storageBucket: "SEU_PROJETO.appspot.com",
+    messagingSenderId: "XXXX",
+    appId: "XXXX"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const storage = getStorage(app);
+
+  const form = document.getElementById("cadastroForm");
+  const container = document.getElementById("cardsContainer");
+  const filtroMes = document.getElementById("filtroMes");
+
+  // 📌 Salvar ou editar cadastro
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const editId = document.getElementById("editId").value;
+    const nome = document.getElementById("nome").value;
+    const numero = document.getElementById("numero").value;
+    const mensagem = document.getElementById("mensagem").value;
+    const data = document.getElementById("data").value;
+    const fotoFile = document.getElementById("foto").files[0];
+
+    let fotoUrl = "";
+
+    if (fotoFile) {
+      const fotoRef = ref(storage, "fotos/" + Date.now() + "_" + fotoFile.name);
+      await uploadBytes(fotoRef, fotoFile);
+      fotoUrl = await getDownloadURL(fotoRef);
+    }
+
+    if (editId) {
+      const refDoc = doc(db, "aniversarios", editId);
+      const updateData = { nome, numero, mensagem, data };
+      if (fotoUrl) updateData.fotoUrl = fotoUrl;
+      await updateDoc(refDoc, updateData);
+      alert("✏️ Cadastro atualizado!");
+    } else {
+      await addDoc(collection(db, "aniversarios"), {
+        nome, numero, mensagem, data, fotoUrl
+      });
+      alert("✅ Cadastro salvo!");
+    }
+
+    form.reset();
+    document.getElementById("editId").value = "";
+    carregarCadastros();
+  });
+
+  // 📌 Carregar cadastros
+  async function carregarCadastros() {
+    container.innerHTML = "";
+    const mesSelecionado = filtroMes.value;
+    const querySnapshot = await getDocs(collection(db, "aniversarios"));
+
+    querySnapshot.forEach((docSnap) => {
+      const c = docSnap.data();
+      const id = docSnap.id;
+
+      // Pegar mês da data
+      const mesData = c.data ? c.data.split("-")[1] : "";
+
+      if (mesSelecionado && mesData !== mesSelecionado) return;
+
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        ${c.fotoUrl ? `<img src="${c.fotoUrl}">` : ""}
+        <h3>${c.nome}</h3>
+        <p>${c.mensagem}</p>
+        <p>${c.data}</p>
+        <div class="actions">
+          <button class="edit-btn" onclick="editarCadastro('${id}', '${c.nome}', '${c.numero}', '${c.mensagem}', '${c.data}')">
+            <i class="fa-solid fa-pen"></i> Editar
+          </button>
+          <button class="delete-btn" onclick="excluirCadastro('${id}', '${c.fotoUrl || ""}')">
+            <i class="fa-solid fa-trash"></i> Excluir
+          </button>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  }
+
+  // 📌 Editar cadastro
+  window.editarCadastro = function(id, nome, numero, mensagem, data) {
+    document.getElementById("editId").value = id;
+    document.getElementById("nome").value = nome;
+    document.getElementById("numero").value = numero;
+    document.getElementById("mensagem").value = mensagem;
+    document.getElementById("data").value = data;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // 📌 Excluir cadastro
+  window.excluirCadastro = async function(id, fotoUrl) {
+    if (confirm("Deseja excluir este cadastro?")) {
+      await deleteDoc(doc(db, "aniversarios", id));
+      if (fotoUrl) {
+        const caminho = decodeURIComponent(fotoUrl.split("/o/")[1].split("?")[0]);
+        const fotoRef = ref(storage, caminho);
+        await deleteObject(fotoRef).catch(()=>{});
+      }
+      carregarCadastros();
+    }
+  }
+
+  // 📌 Filtro de meses
+  filtroMes.addEventListener("change", carregarCadastros);
+
+  // Inicializar
+  carregarCadastros();
+</script>
+</body>
+</html>
